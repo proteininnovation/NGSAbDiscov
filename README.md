@@ -95,6 +95,26 @@ CDR3 count.
   <img src="images/examples/miseq117/rarefaction-100nm.png" alt="Rarefaction curves for the MiSeq 117 samples selected at 100 nM" width="900">
 </p>
 
+### Representative CDR sequence logos
+
+Weighted sequence logos summarize the final HSEQ assignments for the AGRG7
+human target after ANARCI/IMGT alignment and the report's annotation and
+frequency filters. Letter height shows the amino-acid information at each IMGT
+position. The CDR1, CDR2, and CDR3 logos include 37, 263, and 231 unique
+sequences, respectively.
+
+<p align="center">
+  <img src="images/examples/miseq117/agrg7-human-cdr1-sequence-logo.png" alt="AGRG7 human target CDR1 weighted sequence logo from 37 unique sequences" width="900">
+</p>
+
+<p align="center">
+  <img src="images/examples/miseq117/agrg7-human-cdr2-sequence-logo.png" alt="AGRG7 human target CDR2 weighted sequence logo from 263 unique sequences" width="900">
+</p>
+
+<p align="center">
+  <img src="images/examples/miseq117/agrg7-human-cdr3-sequence-logo.png" alt="AGRG7 human target CDR3 weighted sequence logo from 231 unique sequences" width="900">
+</p>
+
 ### Delphi PSR and SEC profiles
 
 The Delphi profiles compare sequence features above and below the 0.5 score
