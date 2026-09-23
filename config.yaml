@@ -1,0 +1,278 @@
+# config.yaml - Single master configuration file
+
+# Use --library <name> on command line to override default_library
+
+# Set the default library here
+current_library: "standard_fab"   # ← CHANGE THIS LINE
+#current_library: "vhh_full"
+
+library_aliases:
+  fab: "standard_fab"
+  fab_standard: "standard_fab"
+  vhh: "vhh_full"
+  mixed: "mixed"
+
+# change these paths as needed, please install fastp and mafft and set their paths here 
+# set base_dir and output_folder 
+# set previous_antibodies_db to the path of the previous antibodies database file (download from Haisun shared folder)
+
+general:
+  base_dir: "/alphafold/combio/software/NGSAbDiscov"
+  fastp_path: "/usr/local/lib/NGS_pipeline/annaconda3/bin/fastp"
+  mafft_path: "/usr/local/lib/NGS_pipeline/annaconda3/bin/mafft"
+  previous_antibodies_db: "/alphafold/combio/software/NGSAbDiscov/data/All_mAb_20260626_FACS_BLI.xlsx"
+  output_folder: "results"
+
+
+
+libraries:
+  standard_fab:
+    library_type: "fab"
+    vh_barcodes:
+      VHH-IPI-101: "TGTGCCATTTCGGGTTCCGGTGGTAGCACCTAC"
+      H1-69: "GGTGGTATTATTCCAATTTTTGGTACTGCTAAT"
+      H3-23_A: "TCTTATATATCTTCATCTGGTTCTACTATTTAT"
+      H5-51: "GGTATAATCTACCCCGGTGATTCTGATACTAGA"
+      H3-7_A: "GCTAATATCAAACAAGAAGGTTCTGAAAAGTAT"
+      H4-34: "GGTGAAATCAATCACTCTGGTTCCACCAAC"
+    vl_barcodes:
+      K1-39: "GTCACGGTATCC"
+      K3-15: "GTGACAGTCTCG"
+      K4-1: "GTAACCGTGTCA"
+      K3-20: "GTTACTGTTTCTTCTGCATCTACT"
+    vh_barcode_region: [0, -1]
+    vl_barcode_region: [-70, -1]
+
+  fab4:
+    library_type: "fab"
+    vh_barcodes:
+      VH1-69: "ACCACCCATCCATTCCAAACCTTGACCTGGAGCTTGTCTAACCCAAGAAAT"
+      VH3-23: "GGCAGAAACCCATTCCAAACCCTTACCTGGAGCTTGTCTAACCCAAGACAT"
+      VH4-30-4: "GTAACCAATCCATTCCAAACCCTTACCAGGTGGTTGTCTGATCCAAGACCA"
+      VH5-51: "GATACCCATCCATTCCAAACCCTTACCTGGCATTTGTCTAACCCAACCAAT"
+    vl_barcodes:
+      VK1-39: "GAGGTGCAGTTG"
+      VK3-15: "GAAGTTCAGTTA"
+      VK4-1: "GAAGTCCAACTT"
+      VK2-28: "GAGGTTCAACTA"
+    vh_barcode_region: [0, -1]
+    vl_barcode_region: [-70, -1]
+
+  vhh_full:
+    library_type: "vhh"
+    vh_barcodes:
+      VHH-IPI-101: "TGTGCCATTTCGGGTTCCGGTGGTAGCACCTAC"
+      #Scaffold16: "CGTCAGGCACCGGGTAAAGAACGTGAATTAGTCAGCGCC"
+      #VOB: "AGACAAGCTCCAGGTAAGGGTCGTGAATTAGTTGCCGGT"
+      VHH-103: "GCTGGTTGAATCCGGTGGCGGTCTG"
+      VHH-105: "ATTGGTTGAATCTGGTGGTGGCAGC"
+      VH_BLAM: "TACAGACAAGCTCCAGGTAAGGGTCGTGAATTAGTTGCCGGT"
+    vl_barcodes:
+      K1-39: "GTCACGGTATCC"
+      K3-15: "GTGACAGTCTCG"
+      K4-1: "GTAACCGTGTCA"
+      K3-20: "GTTACTGTTTCTTCTGCATCTACT"
+    vh_barcode_region: [0, -1]
+    vl_barcode_region: [0, -1]
+
+processing:
+  yyc_nt:
+    - "TACTACTGC"
+    - "TATTACTGC"
+  wgq_nt:
+    - "TGGGGACAA"
+  
+
+  hcdr3_min_len: 2
+  hcdr3_max_len: 30
+  read_count_min: 1
+  read_freq_min: 0.00000001   # 1e-8 
+
+  filters_include: []        # e.g. ["mPLXNB1"]
+  filters_exclude: []        # e.g. ["VHH", "MACS"]
+
+  skip_processed: false
+
+combine:
+  # Columns used for grouping in pivot table
+  pivot_cols:
+    - "CDR3"
+    - "vh_scaffold"
+    - "vl_scaffold"
+    - "anarci_anno"
+    #- "cdr3_functional"
+
+  pivot_cols_by_library_type:
+    fab:
+      - "CDR3"
+      - "vh_scaffold"
+      - "vl_scaffold"
+      - "anarci_anno"
+    vhh:
+      - "CDR1"
+      - "CDR2"
+      - "CDR3"
+      - "vh_scaffold"
+
+  # Name of the CDR3 column (used for liabilities, clustering, length filtering)
+  cdr3_col: "CDR3"
+
+  # Filtering thresholds
+  min_cdr3_len: 5
+  max_cdr3_len: 30
+  min_freq: 0.00001
+  min_count: 5
+  min_freq_sum: 0.00001
+  min_reads_per_round: 5000
+  remove_non_functional: false
+
+  # Critical liabilities for rank adjustment
+  critical_liabilities:
+    - "l_glyco"
+    - "l_RR"
+    - "l_WW"
+    - "l_cys"
+    - "l_hydrophobic"
+    - "l_neg_charge"
+    - "l_pos_charge"
+    - "l_arg"
+    - "l_rmd"
+
+  # Clustering
+  greedy_cutoff: 0.85
+
+  # Output
+  top_leads_per_target: 1000000
+  save_greedy_representatives: false
+
+pick_leads:
+  min_freq_first: 0.0001
+  min_freq_sum: 0.00005
+  min_freq_table: 0.00001
+  n_leads: 10000000
+  critical_filtering: false
+  priority_concentrations:
+    - "4nM"
+    - "20nM"
+    - "100nM"
+  dont_order_antigens: []
+  write_intermediate_lead_files: false
+  cleanup_intermediate_lead_files: true
+  final_exclude_columns:
+    - "prevalent_targets_vh_cdr3"
+    - "contaminant_vh_cdr3"
+    - "cross_target_reads"
+    - "cross_target_samples"
+    - "library"
+    - "library_type"
+    - "CHAIN"
+    - "aa"
+    - "FR1"
+    - "FR2"
+    - "FR3"
+    - "FR4"
+    - "ML_SEQUENCE_OK"
+    - "HSEQ_SOURCE"
+    - "LSEQ_SOURCE"
+
+repeat_check:
+  blosum_threshold: 0.8
+  max_cdr3_len_blosum: 25
+  n_workers: 8
+
+fastp:
+  qualified_quality_phred: 25
+  unqualified_percent_limit: 20
+  length_required: 50
+  n_base_limit: 5
+  correction: true
+  overlap_len_require: 40
+  overlap_diff_limit: 5
+  thread: 48
+  disable_adapter_trimming: true
+  disable_trim_poly_g: true
+
+ml:
+  enabled: true
+  backend: "auto"       # auto, ipi_psr, or delph
+  fail_on_error: false  # keep the NGS run complete if optional ML is unavailable
+  model_dir: "psr_model_ml"
+  input_globs:
+    - "by_protein/*_final_leads.xlsx"
+  batch_size: 128
+  device: "cpu"
+  include_embeddings: false
+  delph:
+    package_path: "/alphafold/combio/software/delphi"
+    module: "delphi"
+    cdr3_column: "CDR3"
+    command:
+      - "bash -lc \"source /alphafold/combio/software/delphi/activate.sh >/dev/null && cd /alphafold/combio/software/delphi && python delphi.py --predict {input_q} --target psr_filter --lm ablang --model xgboost --db ipi_psr_trainset\""
+      - "bash -lc \"source /alphafold/combio/software/delphi/activate.sh >/dev/null && cd /alphafold/combio/software/delphi && python delphi.py --predict {input_q} --target psr_filter --lm biophysical --model xgboost --db ipi_psr_trainset\""
+      - "bash -lc \"source /alphafold/combio/software/delphi/activate.sh >/dev/null && cd /alphafold/combio/software/delphi && python delphi.py --predict {input_q} --target psr_filter --lm igbert --model transformer_lm --db ipi_psr_trainset\""
+      - "bash -lc \"source /alphafold/combio/software/delphi/activate.sh >/dev/null && cd /alphafold/combio/software/delphi && python delphi.py --predict {input_q} --target sec_filter --lm ablang --model xgboost --db ipi_psr_trainset\""
+      - "bash -lc \"source /alphafold/combio/software/delphi/activate.sh >/dev/null && cd /alphafold/combio/software/delphi && python delphi.py --predict {input_q} --target sec_filter --lm biophysical --model xgboost --db ipi_psr_trainset\""
+      - "bash -lc \"source /alphafold/combio/software/delphi/activate.sh >/dev/null && cd /alphafold/combio/software/delphi && python delphi.py --predict {input_q} --target sec_filter --lm igbert --model transformer_lm --db ipi_psr_trainset\""
+    sequence_column: "HSEQ"
+    require_full_hseq: true
+    require_lseq: true
+    drop_incomplete_sequences: true
+    max_prediction_rows: 500
+    min_prediction_max_freq: 0.0005
+    allow_cdr3_fallback: false
+    append_light_constant: false
+    continue_on_command_error: true
+    write_back_to_input: true
+    cleanup_existing_outputs: true
+    cleanup_intermediate_outputs: true
+    write_dropped_audit: false
+    final_exclude_columns:
+      - "prevalent_targets_vh_cdr3"
+      - "contaminant_vh_cdr3"
+      - "cross_target_reads"
+      - "cross_target_samples"
+      - "library"
+      - "library_type"
+      - "CHAIN"
+      - "aa"
+      - "FR1"
+      - "FR2"
+      - "FR3"
+      - "FR4"
+      - "ML_SEQUENCE_OK"
+      - "HSEQ_SOURCE"
+      - "LSEQ_SOURCE"
+    by_library_type:
+      vhh:
+        # VHH has no light chain. Keep LSEQ empty and use Delphi sequence-only
+        # models that consume HSEQ/CDR3 features instead of VH+VL embeddings.
+        command:
+          - "bash -lc \"source /alphafold/combio/software/delphi/activate.sh >/dev/null && cd /alphafold/combio/software/delphi && python delphi.py --predict {input_q} --target psr_filter --lm biophysical --model xgboost --db ipi_psr_trainset\""
+          - "bash -lc \"source /alphafold/combio/software/delphi/activate.sh >/dev/null && cd /alphafold/combio/software/delphi && python delphi.py --predict {input_q} --target psr_filter --lm kmer --model xgboost --db ipi_psr_trainset --model_path /alphafold/combio/software/delphi/pretrained_202605/FINAL_psr_filter_kmer_xgboost_ipi_psr_trainset.pkl\""
+          - "bash -lc \"source /alphafold/combio/software/delphi/activate.sh >/dev/null && cd /alphafold/combio/software/delphi && python delphi.py --predict {input_q} --target sec_filter --lm biophysical --model xgboost --db ipi_psr_trainset\""
+          - "bash -lc \"source /alphafold/combio/software/delphi/activate.sh >/dev/null && cd /alphafold/combio/software/delphi && python delphi.py --predict {input_q} --target sec_filter --lm kmer --model xgboost --db ipi_psr_trainset\""
+        require_lseq: false
+        force_no_lseq: true
+        continue_on_command_error: true
+        write_back_to_input: true
+        cleanup_existing_outputs: true
+        cleanup_intermediate_outputs: true
+        write_dropped_audit: false
+    callables:
+      - "predict_dataframe"
+      - "predict_df"
+      - "score_dataframe"
+      - "score_df"
+      - "predict"
+      - "score"
+
+registry:
+  enabled: true
+  project: "IPI"
+  path:
+
+stage_b:
+  # Optional CSV/TSV/XLSX mapping target names to antigen amino-acid sequences.
+  # If final lead workbooks already contain antigen_aa or antigen_sequence,
+  # this table is not required.
+  target_sequence_table:

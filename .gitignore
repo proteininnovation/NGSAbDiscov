@@ -1,0 +1,49 @@
+# Python caches and environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Editors and operating-system files
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Data and sequencing inputs/outputs
+data/
+Fastq/
+fastq/
+results/
+results_*/
+*.csv
+*.tsv
+*.xls
+*.xlsx
+*.fastq
+*.fastq.gz
+*.fq
+*.fq.gz
+*.gz
+
+# Generated reports, logs, and office artifacts
+*.html
+*.log
+*.log.txt
+*.docx
+*.pptx
+
+# Trained model artifacts
+*.keras
+*.pt
+*.pth
+*.pkl
+*.joblib
+
+# Local configuration overrides
+.env
+.env.*
+config.local.yaml
