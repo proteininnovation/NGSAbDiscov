@@ -1,327 +1,215 @@
+# NGSAbDiscov
 
-# IPIAbDiscov: A Python Package, developped at IPI, for NGS-Based Antibody Discovery
-IPIAbDiscov is an open-source Python package designed to streamline the analysis of Next-Generation Sequencing (NGS) data from antibody display technologies, such as phage display or yeast display libraries. It provides a command-line interface for processing raw FASTQ files from antibody selection campaigns, enabling researchers to quantify sequence abundance, track enrichment across selection rounds, and identify promising lead candidates for therapeutic antibody development.
+NGSAbDiscov analyzes antibody-display sequencing campaigns from paired FASTQ
+files through ranked lead tables and a shareable QC report. It supports Fab,
+VHH, and mixed MiSeq runs, with library-aware sequence parsing and lead
+selection.
 
-IPIAbDiscov allow to accelerate the transition from huge amount of NGS data to validated antibody leads, reducing reliance on traditional low-throughput screening while uncovering rare, high-potential clones often missed in conventional pipelines. Ideal for academic and biotech researchers in antibody discovery engineering.
+The pipeline processes reads with `fastp`, identifies antibody regions, groups
+clones by target and selection condition, tracks enrichment across rounds,
+checks repeated and cross-target sequences, and produces final Excel tables,
+plots, and HTML or PDF reports.
 
-# Key Features
+## Workflow
 
-FASTQ Processing: Quality trimming, filtering, and annotation of antibody sequences using tools like fastp and ANARCI for accurate numbering and germline assignment of Fab or scFv fragments.
-
-Data Aggregation: Combine results from multiple samples or rounds to generate comprehensive repertoire tables.
-
-Lead Selection: Automated ranking and selection of top-enriched sequences based on read counts and enrichment metrics.
-
-Repeatability Checks: Identify and quantify repeated or duplicated sequences across datasets.
-
-
-The package is lightweight, dependency-managed (via requirements.txt and Bioconda tools), and configured through YAML files and sample sheets, making it suitable for MiSeq or similar NGS runs in antibody discovery projects.
-Potential Future Enhancements
-
-Developability Assessment: Built-in filters for liabilities (e.g., glycosylation sites, cysteine residues) and integration with external databases for off-target prediction.
-
-To further empower antibody discovery workflows, future versions could include:
-
-Advanced Visualization: Interactive plots for repertoire diversity (e.g., Shannon entropy, clonal frequency distributions), enrichment heatmaps across selection rounds, sequence logos for CDR regions, and pairwise similarity networks.
-
-Fold Change and Enrichment Analysis: Statistical computation of log-fold changes between pre- and post-selection rounds, with significance testing to highlight antigen-specific binders.
-
-Machine Learning Integration: Predictive models for affinity or developability scoring, clustering of related sequences (e.g., lineage grouping), or epitope binning using sequence features.
-
-
-Repository: https://github.com/bmhoan/IPIAbDiscov
-
-
-
-
-# Package installtion
-
-download abodydisco from ipi githup
-
-#install requirements
-pip install -r requirements.txt
-
-#fastp instalation
-conda install -c bioconda fastp
-
-#anarci installation
-https://github.com/oxpig/ANARCI.git
-conda install -c conda-forge biopython -y
-conda install -c bioconda hmmer=3.3.2 -y
-cd ANARCI
-python setup.py install
-
-# How To Use AbodyDisco
-
-cd abodydisco
-
-python __main__.py process \
-  --config config.yaml \
-  --sample-sheet Miseq104/Fastq/Miseq104_SampleSheet.xlsx \
-  --fastq-folder Miseq104/Fastq
-
-python  __main__.py combine --folder Miseq104/results
-
-python  __main__.py  pick-leads --folder Miseq104/results
-
-python  __main__.py check-repeats --folder Miseq104/results
-
-## Library Selection
-
-Use one `config.yaml` for Fab, VHH, or mixed runs. The CLI accepts aliases:
-
-```bash
-python __main__.py run-all --config config.yaml --lib fab ...
-python __main__.py run-all --config config.yaml --lib vhh ...
-python __main__.py run-all --config config.yaml --lib mixed ...
+```text
+sample sheet + paired FASTQ files
+                |
+                v
+       read QC and merging
+                |
+                v
+   antibody sequence annotation
+                |
+                v
+   per-sample clone quantification
+                |
+                v
+ target-level aggregation and ranking
+                |
+                v
+ QC tables + lead workbooks + report
 ```
 
-New sample sheets require three minimum columns:
+The main outputs are:
 
-- `TubeBarcode`: FASTQ tube/index identifier; FASTQ names should begin with this value.
-- `Sample_Name`: biological/output sample name, replacing the old `Description`
-  column. Format: `target__block__round__arm__condition`.
-- `library`: friendly library type, usually `fab` or `vhh`. These resolve to
-  the concrete config libraries such as `standard_fab` or `vhh_full`.
+- `sample_qc_table.csv`, with read-processing and repertoire QC for every sample
+- `*_clones.csv`, with per-sample clone counts and frequencies
+- `by_protein/*_final_leads.xlsx`, with ranked leads for each target
+- `data_summary.csv` and `ml_summary.csv`, with campaign-level summaries
+- `plots/*.png`, plus `report.html` and optionally `report.pdf`
+- `run_manifest.json`, which records the completed run
 
-Each `target + block` group should use one library. A sequencing run can mix
-Fab and VHH samples, but a group such as `TargetA / Block1` cannot contain both
-libraries; the validator will stop on that because clone grouping and lead
-selection are library-specific.
+## Example campaign: MiSeq 117
 
-Legacy sheets with `Sample_ID` are still accepted and converted to `TubeBarcode`
-with a warning. Legacy sheets with `Description` are still accepted and
-converted to `Sample_Name` with a warning. When the same target contains both
-Fab and VHH samples, clone outputs are split by library, for example
-`Target_Block1_standard_fab_clones.csv` and `Target_Block1_vhh_full_clones.csv`.
+The following results come from a VHH selection campaign processed with
+NGSAbDiscov. The run contained 39 samples, 11 targets, and selection rounds 3
+through 7.
 
-ML prediction is also library-aware. Fab inputs require full `HSEQ` and `LSEQ`
-and can use VH+VL language-model embeddings. VHH inputs have no real light
-chain: the pipeline keeps `LSEQ` empty, requires only full `HSEQ` plus `CDR3`,
-and uses Delphi sequence-only models such as `--lm biophysical` or `--lm kmer`
-with RF/XGBoost models when those checkpoints are registered. Successful
-prediction score/label columns are merged back into each `*_final_leads.xlsx`.
+| QC measure | MiSeq 117 result |
+| --- | ---: |
+| Samples | 39 |
+| Targets | 11 |
+| Raw reads | 7,535,814 |
+| Merged reads | 6,963,775 |
+| Median merge rate | 92.81% |
+| Reads assigned a CDR3 | 6,895,227 (99.02% of merged reads) |
+| Median antibody-annotation rate | 96.40% |
+| Median cross-target read rate | 1.68% |
+| Cross-target read range | 0.31% to 37.53% |
 
-# My pipeline configuration
-#config.yaml - Single master configuration file
+Read depth was sufficient across the campaign, while the difference between
+raw and merged counts remained modest for most samples. The sample-level plot
+also makes lower-yield libraries easy to identify before lead ranking.
 
-current_library: "standard_fab"   # ← CHANGE THIS LINE
+<p align="center">
+  <img src="images/examples/miseq117/sequencing-depth.png" alt="Raw and merged read counts for the 39 MiSeq 117 samples" width="900">
+</p>
 
-general:
-  base_dir: "/Users/Hoan.Nguyen/ComBio/AbodyDiscov"
-  
-  fastp_path: "/opt/anaconda3/bin/fastp"
-  
-  mafft_path: "/opt/anaconda3/bin/mafft"
-  
-  previous_antibodies_db: "/Users/Hoan.Nguyen/ComBio/AbodyDiscov/data/All_mAb_20251106_FACS_BLI.xlsx"
-  
-  output_folder: "results"
+The median Shannon diversity decreased from 10.39 in round 3 to 7.70 in round
+4, 4.99 in round 5, and 3.46 in round 6. This pattern is consistent with
+progressive repertoire narrowing during selection. Round 7 contained only two
+samples, so its median should not be compared with the earlier rounds without
+that sample-count difference in mind.
 
+<p align="center">
+  <img src="images/examples/miseq117/shannon-diversity-by-round.png" alt="Shannon diversity by selection round for MiSeq 117" width="900">
+</p>
 
+Target-level fold-change plots connect enrichment with clone rank. In the
+example below, each point is a clone, the x-axis is the log2 frequency ratio
+between the 4 nM and 20 nM selections, and the y-axis is log rank. Green points
+have a mean Delphi score above 0.5. Dashed lines mark the report thresholds used
+to review candidate leads.
 
-libraries:
+<p align="center">
+  <img src="images/examples/miseq117/representative-fold-change.png" alt="Representative clone fold-change and rank plot from MiSeq 117" width="900">
+</p>
 
-  standard_fab:
-  
-    vh_barcodes:
-    
-      VHH-IPI-101: "TGTGCCATTTCGGGTTCCGGTGGTAGCACCTAC"
-      
-      H1-69: "GGTGGTATTATTCCAATTTTTGGTACTGCTAAT"
-      
-      H3-23_A: "TCTTATATATCTTCATCTGGTTCTACTATTTAT"
-      
-      H5-51: "GGTATAATCTACCCCGGTGATTCTGATACTAGA"
-      
-      H3-7_A: "GCTAATATCAAACAAGAAGGTTCTGAAAAGTAT"
-      
-      H4-34: "GGTGAAATCAATCACTCTGGTTCCACCAAC"
-      
-      Scaffold16: "CGTCAGGCACCGGGTAAAGAACGTGAATTAGTCAGCGCC"
-      
-      VOB: "AGACAAGCTCCAGGTAAGGGTCGTGAATTAGTTGCCGGT"
-      
-      VH_BLAM: "TACAGACAAGCTCCAGGTAAGGGTCGTGAATTAGTTGCCGGT"
-      
-    vl_barcodes:
-    
-      K1-39: "GTCACGGTATCC"
-      
-      K3-15: "GTGACAGTCTCG"
-      
-      K4-1: "GTAACCGTGTCA"
-      
-      K3-20: "GTTACTGTTTCTTCTGCATCTACT"
-      
-    vh_barcode_region: [0, -1]
-    
-    vl_barcode_region: [-70, -1]
+The cross-target QC distribution was wide. Most samples were near the low end,
+but the maximum reached 37.53%, identifying a sample that warrants review
+before ordering leads.
 
+## Features
 
-  vhh_full:
-  
-    vh_barcodes:
-    
-      VHH-IPI-101: "TGTGCCATTTCGGGTTCCGGTGGTAGCACCTAC"
-      
-      H1-69: "GGTGGTATTATTCCAATTTTTGGTACTGCTAAT"
-      
-      H1-46: "GGTATTATCAAACCATCTGGTGGTTCTACTTCT"
-      
-      H3-23_A: "TCTTATATATCTTCATCTGGTTCTACTATTTAT"
-      
-      H5-51: "GGTATAATCTACCCCGGTGATTCTGATACTAGA"
-      
-      H5-51_A: "GGTATAATCTACCCCGGTTATTCTGATACTAGA"
-      
-      H3-15: "GGTCGTATTAAGAGTAAAACCGATGGTGGTACTACTGAT"
-      
-      H3-7_A: "GCTAATATCAAACAAGAAGGTTCTGAAAAGTAT"
-      
-      H4-34: "GGTGAAATCAATCACTCTGGTTCCACCAAC"
-      
-      H4-39: "GGTTCTATATACTATTCTGGTTCAACTTAT"
-      
-      DEEPASH: "ACTCGCGGCTCAACCCGCAATGGCC"
-      
-      DEEPASH-R: "AACAACTTTCAACAGTTTCGGCACC"
-      
-      Scaffold16: "CGTCAGGCACCGGGTAAAGAACGTGAATTAGTCAGCGCC"
-      
-      VOB: "AGACAAGCTCCAGGTAAGGGTCGTGAATTAGTTGCCGGT"
-      
-      VH_BLAM: "TACAGACAAGCTCCAGGTAAGGGTCGTGAATTAGTTGCCGGT"
-      
-    vl_barcodes:
-    
-      K1-39: "GTCACGGTATCC"
-      
-      K3-15: "GTGACAGTCTCG"
-      
-      K4-1_C: "GTAACCGTGTCA"
-      
-      K3-20: "GTTACTGTTTCTTCTGCATCTACT"
-      
-    vh_barcode_region: [0, -1]
-    
-    vl_barcode_region: [0, -1]
+- Paired-end FASTQ quality control, filtering, and merging
+- Fab and VHH library definitions with configurable barcode regions
+- Mixed-run validation with one library type per target and block
+- CDR extraction, ANARCI annotation, clone counting, and frequency calculation
+- Target-level aggregation across rounds and selection conditions
+- Lead ranking with frequency, enrichment, liability, and repeat checks
+- Cross-target clone detection and sample-level contamination summaries
+- Shannon, evenness, inverse Simpson, rarefaction, sequence-logo, and
+  fold-change plots
+- Optional Delphi-based sequence scoring when the model environment is
+  available
+- HTML and PDF campaign reports plus an interactive Dash review app
 
-processing:
+## Installation
 
-  yyc_nt:
-  
-    - "TACTACTGC"
-    
-    - "TATTACTGC"
-    
-  wgq_nt:
-  
-    - "TGGGGACAA"
+Clone the repository and create a dedicated Python environment:
 
-  hcdr3_min_len: 1
-  
-  hcdr3_max_len: 30
-  
-  read_count_min: 1
-  
-  read_freq_min: 0.0000001   
+```bash
+git clone https://github.com/proteininnovation/NGSAbDiscov.git
+cd NGSAbDiscov
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
 
-  filters_include: []       
-  
-  filters_exclude: []        
-  skip_processed: false
+Install the command-line tools used by the processing step and set their paths
+in `config.yaml`:
 
-combine:   
+```bash
+conda install -c bioconda fastp mafft hmmer=3.3.2
+```
 
-  #Columns used for grouping in pivot table
-  
-  pivot_cols:
-  
-    - "cdr3_aa"
-    
-    - "vh_scaffold"
-    
-    - "vl_scaffold"
-    
-    - "cdr3_functional"
-    
+ANARCI must also be available in the same environment. See the
+[ANARCI repository](https://github.com/oxpig/ANARCI) for installation options.
 
-  #Name of the CDR3 column (used for liabilities, clustering, length filtering)
-  
-  cdr3_col: "cdr3_aa"
+## Input files
 
-  #Filtering thresholds
-  
-  min_cdr3_len: 6
-  
-  max_cdr3_len: 30
-  
-  min_freq: 0.0001
-  
-  min_count: 5
-  
-  min_freq_sum: 0.0001
-  
-  min_reads_per_round: 5000
-  
-  remove_non_functional: true
+Each run needs paired FASTQ files and a sample sheet. New sample sheets require
+these columns:
 
-  #Critical liabilities for rank adjustment
-  
+| Column | Description |
+| --- | --- |
+| `TubeBarcode` | FASTQ tube or index identifier. FASTQ filenames should start with this value. |
+| `Sample_Name` | Sample identifier in `target__block__round__arm__condition` format. |
+| `library` | Library alias or configured library name, such as `fab`, `vhh`, `standard_fab`, or `vhh_full`. |
 
+Legacy `Sample_ID` and `Description` columns are accepted with a conversion
+warning. A sequencing run may contain both Fab and VHH samples, but every
+`target + block` group must use one library type.
 
-pick_leads:
+## Configuration
 
-  min_freq_first: 0.005
-  
-  min_freq_sum: 0.0005
-  
-  min_freq_table: 0.0001
-  
-  n_leads: 10000000
-  
-  critical_filtering: false
-  
-  priority_concentrations:
-  
-    - "4nM"
-    
-    - "20nM"
-    
-    - "100nM"
-    
-  dont_order_antigens: []
+Start from `config.yaml` or `config_VHH.yaml` and update at least:
 
-repeat_check:
+- `general.base_dir`
+- `general.fastp_path`
+- `general.mafft_path`
+- `general.previous_antibodies_db`
+- `general.output_folder`
+- the barcode definitions for the libraries used in the run
 
-  blosum_threshold: 0.8
-  
-  max_cdr3_len_blosum: 25
-  
-  n_workers: 8
+Processing, aggregation, lead-selection, repeat-check, reporting, and optional
+ML settings live in the same YAML file. Relative paths are resolved from
+`general.base_dir`.
 
-fastp:
+## Run the pipeline
 
-  qualified_quality_phred: 25
-  
-  unqualified_percent_limit: 20
-  
-  length_required: 50
-  
-  n_base_limit: 5
-  
-  correction: true
-  
-  overlap_len_require: 50
-  
-  overlap_diff_limit: 5
-  
-  thread: 8
-  
-  disable_adapter_trimming: true
-  
-  disable_trim_poly_g: true
+Validate the sample sheet and FASTQ pairing before starting a full run:
 
-  
-#contact {Hoan.Nguyen, Andre.Teixeira}@proteininnovation.org}
+```bash
+python __main__.py validate-sample-sheet \
+  --config config.yaml \
+  --sample-sheet /path/to/SampleSheet.xlsx \
+  --fastq-folder /path/to/Fastq \
+  --lib mixed
+```
+
+Run all processing, aggregation, lead selection, optional ML scoring, and
+report generation in one command:
+
+```bash
+python __main__.py run-all \
+  --config config.yaml \
+  --sample-sheet /path/to/SampleSheet.xlsx \
+  --fastq-folder /path/to/Fastq \
+  --output-folder results \
+  --lib mixed \
+  --report-format both
+```
+
+Use `--skip-ml` when the optional model environment is unavailable. Use
+`--lib fab` or `--lib vhh` to force one library type for the run.
+
+The stages can also be run separately:
+
+```bash
+python __main__.py process --config config.yaml --sample-sheet SampleSheet.xlsx --fastq-folder Fastq
+python __main__.py combine --config config.yaml --folder results
+python __main__.py pick-leads --config config.yaml --folder results
+python __main__.py check-repeats --config config.yaml --folder results
+python __main__.py ml-prediction --config config.yaml --folder results
+python __main__.py generate-plots --folder results --report-format both
+```
+
+## Interactive clone review
+
+Launch the Dash application after generating the target-level lead workbooks:
+
+```bash
+python __main__.py clone-app --results-folder /path/to/results
+```
+
+The app reads `by_protein/*_final_leads.xlsx` and provides filters, plots, and
+tables for reviewing candidate clones.
+
+## Notes on the example
+
+The MiSeq 117 figures were exported directly from the pipeline-generated HTML
+report. Summary values were calculated from its `sample_qc_table.csv`. Counts
+describe this run only and are included to show the scale and diagnostic output
+of a completed campaign.
