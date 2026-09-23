@@ -58,23 +58,60 @@ through 7.
 | Median cross-target read rate | 1.68% |
 | Cross-target read range | 0.31% to 37.53% |
 
-Read depth was sufficient across the campaign, while the difference between
-raw and merged counts remained modest for most samples. The sample-level plot
-also makes lower-yield libraries easy to identify before lead ranking.
+Raw read depth ranged from 90,764 to 399,076 reads per sample, and the median
+merge rate was 92.81%. The sample-level plot makes lower-yield and lower-merge
+libraries easy to identify before lead ranking.
 
 <p align="center">
   <img src="images/examples/miseq117/sequencing-depth.png" alt="Raw and merged read counts for the 39 MiSeq 117 samples" width="900">
 </p>
 
+### Repertoire diversity
+
 The median Shannon diversity decreased from 10.39 in round 3 to 7.70 in round
-4, 4.99 in round 5, and 3.46 in round 6. This pattern is consistent with
-progressive repertoire narrowing during selection. Round 7 contained only two
-samples, so its median should not be compared with the earlier rounds without
-that sample-count difference in mind.
+4, 4.99 in round 5, and 3.46 in round 6. The inverse Simpson analysis shows the
+same decline in dominant-clone diversity on a `log10(1 + value)` scale. Together,
+the metrics are consistent with progressive repertoire narrowing during
+selection. Round 7 contained only two samples, so its distributions should not
+be compared with the earlier rounds without that sample-count difference in
+mind.
 
 <p align="center">
   <img src="images/examples/miseq117/shannon-diversity-by-round.png" alt="Shannon diversity by selection round for MiSeq 117" width="900">
 </p>
+
+<p align="center">
+  <img src="images/examples/miseq117/inverse-simpson-diversity-by-round.png" alt="Inverse Simpson diversity by selection round for MiSeq 117" width="900">
+</p>
+
+### Rarefaction at 100 nM
+
+The rarefaction curves compare CDR3 richness at matched subsampled read depths.
+Several curves continue to rise at their maximum depth, so richness comparisons
+should account for sequencing depth instead of relying only on the final unique
+CDR3 count.
+
+<p align="center">
+  <img src="images/examples/miseq117/rarefaction-100nm.png" alt="Rarefaction curves for the MiSeq 117 samples selected at 100 nM" width="900">
+</p>
+
+### Delphi PSR and SEC profiles
+
+The Delphi profiles compare sequence features above and below the 0.5 score
+threshold. Each panel shows one HCDR3 or heavy-chain property, including amino
+acid counts, loop length, net charge, and isoelectric point. These distributions
+describe the sequences grouped by the model scores; they do not establish that
+any individual feature caused a PSR or SEC prediction.
+
+<p align="center">
+  <img src="images/examples/miseq117/delphi-psr-biophysical-profile.png" alt="Delphi PSR biophysical profile for MiSeq 117 candidate sequences" width="900">
+</p>
+
+<p align="center">
+  <img src="images/examples/miseq117/delphi-sec-biophysical-profile.png" alt="Delphi SEC biophysical profile for MiSeq 117 candidate sequences" width="900">
+</p>
+
+### Lead enrichment
 
 Target-level fold-change plots connect enrichment with clone rank. In the
 example below, each point is a clone, the x-axis is the log2 frequency ratio
