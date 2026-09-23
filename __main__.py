@@ -133,66 +133,6 @@ def ml_prediction(config, folder, backend):
     run_ml_prediction(Path(folder), cfg=cfg, backend=backend)
 
 
-@cli.command("stage-b-export")
-@click.option("--config", "-c", default="config.yaml", help="Path to config YAML")
-@click.option("--folder", required=True, help="Results folder containing by_protein/*_final_leads.xlsx")
-@click.option("--output", default=None, help="Output CSV path. Default: <folder>/stage_b/abforge_stage_b_candidates.csv")
-@click.option("--target-sequences", default=None, help="CSV/TSV/XLSX with target and antigen sequence columns")
-@click.option("--top-per-target", default=None, type=int, help="Optional top-N candidates per target for Stage B")
-@click.option("--max-total", default=None, type=int, help="Optional total candidate cap after cross-target sorting")
-def stage_b_export(config, folder, output, target_sequences, top_per_target, max_total):
-    """Export Stage A leads for AbForge/OpenDDE structural scoring."""
-    cfg = _load_config(config)
-    stage_b_cfg = cfg.get("stage_b", {})
-    target_sequence_table = target_sequences or stage_b_cfg.get("target_sequence_table")
-
-    from pipeline.stage_b_abforge import export_stage_b_candidates
-
-    result = export_stage_b_candidates(
-        Path(folder),
-        output_csv=Path(output) if output else None,
-        target_sequence_table=Path(target_sequence_table) if target_sequence_table else None,
-        top_per_target=top_per_target,
-        max_total=max_total,
-    )
-    click.echo("Stage B export complete")
-    click.echo(f"  candidates: {result.output_csv}")
-    click.echo(f"  ready only: {result.ready_csv}")
-    click.echo(f"  summary: {result.summary_json}")
-    click.echo(f"  rows: {result.rows:,}; ready: {result.ready_rows:,}; targets: {result.targets:,}")
-    if result.missing_hseq_rows or result.missing_antigen_rows:
-        click.echo(f"  missing HSEQ: {result.missing_hseq_rows:,}; missing antigen sequence: {result.missing_antigen_rows:,}")
-
-
-@cli.command("stage-b-import")
-@click.option("--config", "-c", default="config.yaml", help="Path to config YAML")
-@click.option("--folder", required=True, help="Results folder containing by_protein/*_final_leads.xlsx")
-@click.option("--scores", required=True, help="AbForge/OpenDDE scored CSV")
-@click.option("--output-dir", default=None, help="Output folder. Default: <folder>/stage_b")
-@click.option("--target-sequences", default=None, help="CSV/TSV/XLSX with target and antigen sequence columns")
-@click.option("--write-back", is_flag=True, help="Overwrite by_protein workbooks instead of writing stage_b/enriched_by_protein")
-def stage_b_import(config, folder, scores, output_dir, target_sequences, write_back):
-    """Import AbForge/OpenDDE structural scores back into Stage A leads."""
-    cfg = _load_config(config)
-    stage_b_cfg = cfg.get("stage_b", {})
-    target_sequence_table = target_sequences or stage_b_cfg.get("target_sequence_table")
-
-    from pipeline.stage_b_abforge import import_stage_b_scores
-
-    result = import_stage_b_scores(
-        Path(folder),
-        Path(scores),
-        output_dir=Path(output_dir) if output_dir else None,
-        target_sequence_table=Path(target_sequence_table) if target_sequence_table else None,
-        write_back=write_back,
-    )
-    click.echo("Stage B import complete")
-    click.echo(f"  combined csv: {result.combined_csv}")
-    click.echo(f"  combined xlsx: {result.combined_xlsx}")
-    click.echo(f"  summary: {result.summary_json}")
-    click.echo(f"  rows: {result.rows:,}; scored: {result.scored_rows:,}; files written: {result.files_written:,}")
-
-
 @cli.command("clone-app")
 @click.option("--results-folder", "--folder", default=None, help="Single results folder containing by_protein/*_final_leads.xlsx")
 @click.option("--results-root", default=None, help="Root folder containing multiple MiSeq NGSAbDiscov results")

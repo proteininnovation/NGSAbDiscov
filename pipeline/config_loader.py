@@ -136,9 +136,4 @@ def load_config(config_path="config.yaml"):
     if cfg["registry"].get("path"):
         cfg["registry"]["path"] = _as_path(cfg["registry"]["path"], base_dir)
 
-    cfg.setdefault("stage_b", {})
-    cfg["stage_b"].setdefault("target_sequence_table", None)
-    if cfg["stage_b"].get("target_sequence_table"):
-        cfg["stage_b"]["target_sequence_table"] = _as_path(cfg["stage_b"]["target_sequence_table"], base_dir)
-
     return cfg

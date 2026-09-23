@@ -102,53 +102,6 @@ and uses Delphi sequence-only models such as `--lm biophysical` or `--lm kmer`
 with RF/XGBoost models when those checkpoints are registered. Successful
 prediction score/label columns are merged back into each `*_final_leads.xlsx`.
 
-## Stage B: AbForge/OpenDDE Structural Support
-
-Stage A produces sequence and enrichment-driven lead tables:
-
-```bash
-<results_folder>/by_protein/*_final_leads.xlsx
-```
-
-Stage B exports those selected leads for AbForge/OpenDDE modeling and imports
-structural head scores back into new enriched lead tables.
-
-```bash
-python __main__.py stage-b-export \
-  --config config_VHH.yaml \
-  --folder <results_folder> \
-  --target-sequences <target_antigen_sequences.csv> \
-  --max-total 200
-```
-
-This writes:
-
-- `<results_folder>/stage_b/abforge_stage_b_candidates.csv`
-- `<results_folder>/stage_b/abforge_stage_b_ready.csv`
-- `<results_folder>/stage_b/abforge_stage_b_candidates.summary.json`
-
-Run AbForge/OpenDDE on `abforge_stage_b_ready.csv`, then import the scored CSV:
-
-```bash
-python __main__.py stage-b-import \
-  --config config_VHH.yaml \
-  --folder <results_folder> \
-  --scores <abforge_scored_candidates.csv>
-```
-
-By default this does not overwrite Stage A workbooks. It writes:
-
-- `<results_folder>/stage_b/enriched_by_protein/*_stage_b.xlsx`
-- `<results_folder>/stage_b/abforge_stage_b_enriched_leads.csv`
-- `<results_folder>/stage_b/abforge_stage_b_enriched_leads.xlsx`
-
-The imported score table should keep the `stage_b_example_id` column from the
-export. Supported AbForge score columns include `interface_viability_label_pred`,
-`binder_label_pred`, `pose_success_label_pred`, `dockq_pred`, `pkd_pred`, and
-`iptm`. The bridge adds `abforge_structural_selection_score` and
-`abforge_selection_band` for review before SPR.
-
-
 # My pipeline configuration
 #config.yaml - Single master configuration file
 

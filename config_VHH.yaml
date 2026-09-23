@@ -229,9 +229,3 @@ registry:
   enabled: true
   project: "IPI"
   path:
-
-stage_b:
-  # Optional CSV/TSV/XLSX mapping target names to antigen amino-acid sequences.
-  # If final lead workbooks already contain antigen_aa or antigen_sequence,
-  # this table is not required.
-  target_sequence_table:

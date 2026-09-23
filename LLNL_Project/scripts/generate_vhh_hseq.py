@@ -10,7 +10,7 @@ from typing import Any
 import pandas as pd
 
 
-DEFAULT_INPUT = Path("/Users/Hoan.Nguyen/ComBio/AbForge/data/ipi_vhh_selected.xlsx")
+DEFAULT_INPUT = Path("LLNL_Project/sample_sheets/ipi_vhh_selected.xlsx")
 DEFAULT_LIBRARY = Path("data/IPI_VHH_LIB_SEQ.csv")
 DEFAULT_OUTPUT_DIR = Path("LLNL_Project/results/vhh_hseq")
 DEFAULT_SHEET = "Sheet1"
