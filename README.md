@@ -1,35 +1,52 @@
 # NGSAbDiscov
 
-NGSAbDiscov analyzes antibody-display sequencing campaigns from paired FASTQ
-files through ranked lead tables and a shareable QC report. It supports Fab,
-VHH, and mixed MiSeq runs, with library-aware sequence parsing and lead
-selection.
+NGSAbDiscov converts paired-end antibody-display sequencing data into ranked,
+traceable candidate sets for each target. It follows Fab, VHH, or mixed
+libraries across selection rounds, identifies CDR sequences, quantifies clones,
+and compares their abundance across targets and selection conditions.
 
-The pipeline processes reads with `fastp`, identifies antibody regions, groups
-clones by target and selection condition, tracks enrichment across rounds,
-checks repeated and cross-target sequences, and produces final Excel tables,
-plots, and HTML or PDF reports.
+A useful lead is more than the most abundant read. NGSAbDiscov brings together
+experimental selection evidence, repertoire context, campaign history, and
+optional Delphi PSR and SEC scores. The final workbooks retain the underlying
+frequencies, sequences, flags, and model scores so each candidate can be
+reviewed before ordering.
 
-## Workflow
+## Main workflow
 
-```text
-sample sheet + paired FASTQ files
-                |
-                v
-       read QC and merging
-                |
-                v
-   antibody sequence annotation
-                |
-                v
-   per-sample clone quantification
-                |
-                v
- target-level aggregation and ranking
-                |
-                v
- QC tables + lead workbooks + report
+Library selections and any controls are sequenced together. The sample sheet
+keeps every sample linked to its target, block, round, arm, condition, and
+library type. NGSAbDiscov uses those fields to compare like with like and to
+keep different libraries or experimental blocks separate during aggregation.
+
+```mermaid
+flowchart TD
+    L["Display library"] --> R["Selection rounds<br/>R1 to R2 to later rounds"]
+    R --> N["Paired-end MiSeq<br/>sample sheet + FASTQ"]
+    N --> Q["Read QC, filtering, and merging<br/>fastp"]
+    Q --> A["Library-aware sequence parsing<br/>CDR extraction + ANARCI/IMGT"]
+    A --> C["Per-sample clones<br/>counts + frequencies"]
+    C --> G["Combine by target, block, and library<br/>align rounds + conditions"]
+    G --> E["Selection evidence<br/>frequency + enrichment by condition"]
+    E --> P["Preselected leads"]
+    P --> H["Campaign history<br/>repeat + cross-target checks"]
+    H --> M{"Delphi enabled?"}
+    M -->|Yes| S["Sequence scoring<br/>PSR + SEC + mean score"]
+    M -->|No| O["Final lead workbooks"]
+    S --> O
+    G --> D["Repertoire analysis<br/>diversity + CDR clusters + sequence logos"]
+    D --> V["Review outputs<br/>plots + HTML/PDF + Dash app"]
+    O --> V
 ```
+
+The workflow keeps distinct questions visible in the final review:
+
+| Evidence | What it tells the reviewer |
+| --- | --- |
+| Frequency and enrichment | Which clones expand across rounds or under stronger selection conditions. |
+| Shannon, inverse Simpson, and rarefaction | Whether the repertoire is narrowing and whether sequencing depth supports richness comparisons. These are campaign QC measures, not lead scores. |
+| CDR sequence and clustering | Which candidates belong to related sequence families and which representatives preserve sequence diversity. |
+| Repeat and cross-target checks | Whether a clone has appeared in earlier campaigns or occurs across several targets. |
+| Delphi PSR and SEC scores | Optional sequence-based developability evidence for comparing candidates that already have selection support. |
 
 The main outputs are:
 
@@ -67,6 +84,13 @@ libraries easy to identify before lead ranking.
 </p>
 
 ### Repertoire diversity
+
+The target-level view summarizes the sample distribution for each target while
+the colored points retain the selection-round identity of individual samples.
+
+<p align="center">
+  <img src="images/workflow/shannon-diversity-by-target.png" alt="Shannon diversity distributions by target with samples colored by selection round" width="900">
+</p>
 
 The median Shannon diversity decreased from 10.39 in round 3 to 7.70 in round
 4, 4.99 in round 5, and 3.46 in round 6. The inverse Simpson analysis shows the
@@ -116,6 +140,14 @@ sequences, respectively.
 </p>
 
 ### Delphi PSR and SEC profiles
+
+The target-level PSR plot shows the distribution of sequence scores for each
+target. The dashed line marks the report's 0.5 display threshold; selection
+frequency and enrichment remain separate evidence in the lead review.
+
+<p align="center">
+  <img src="images/workflow/delphi-psr-score-by-target.png" alt="Delphi PSR mean score distributions by target with a threshold at 0.5" width="800">
+</p>
 
 The Delphi profiles compare sequence features above and below the 0.5 score
 threshold. Each panel shows one HCDR3 or heavy-chain property, including amino
@@ -266,7 +298,7 @@ tables for reviewing candidate clones.
 
 ## Notes on the example
 
-The MiSeq 117 figures were exported directly from the pipeline-generated HTML
-report. Summary values were calculated from its `sample_qc_table.csv`. Counts
-describe this run only and are included to show the scale and diagnostic output
-of a completed campaign.
+The MiSeq 117 figures include report exports and target-level summary plots from
+the same campaign. Summary values were calculated from its
+`sample_qc_table.csv`. Counts describe this run only and are included to show
+the scale and diagnostic output of a completed campaign.
