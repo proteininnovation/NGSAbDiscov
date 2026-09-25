@@ -81,6 +81,7 @@ processing:
     - "TATTACTGC"
   wgq_nt:
     - "TGGGGACAA"
+    - "TGGGGACAG"
   
 
   hcdr3_min_len: 2

@@ -82,12 +82,29 @@ def _build_hseq_from_regions(row: pd.Series) -> str:
 
 
 def _preserve_cdr3_sources(df: pd.DataFrame) -> pd.DataFrame:
-    """Keep manual CDR3 extraction separate from ANARCI's CDR3 annotation."""
-    manual_cdr3 = df["cdr3_aa"].fillna("").astype(str)
+    """Use ANARCI CDR3 first and retain motif extraction as an audit/fallback."""
+    if "cdr3_aa_manualsearch" in df.columns:
+        manual_cdr3 = df["cdr3_aa_manualsearch"].fillna("").astype(str)
+    else:
+        manual_cdr3 = df.get("cdr3_aa", pd.Series("", index=df.index)).fillna("").astype(str)
+
+    anarci_cdr3 = df.get("CDR3_ANARCI", df.get("CDR3", pd.Series("", index=df.index)))
+    anarci_cdr3 = anarci_cdr3.fillna("").astype(str)
+    primary_cdr3 = anarci_cdr3.where(anarci_cdr3.ne(""), manual_cdr3)
+
+    df["CDR3_ANARCI"] = anarci_cdr3
     df["cdr3_aa_manualsearch"] = manual_cdr3
-    df["CDR3"] = df["CDR3"].fillna("").astype(str)
-    df["cdr3_aa"] = manual_cdr3
-    df["cdr3_aa_len"] = manual_cdr3.str.len()
+    df["CDR3"] = primary_cdr3
+    df["cdr3_aa"] = primary_cdr3
+    df["cdr3_aa_len"] = primary_cdr3.str.len()
+    df["cdr3_source"] = ""
+    df.loc[manual_cdr3.ne(""), "cdr3_source"] = "motif_fallback"
+    df.loc[anarci_cdr3.ne(""), "cdr3_source"] = "anarci"
+    df["cdr3_concordant"] = pd.NA
+    both_present = anarci_cdr3.ne("") & manual_cdr3.ne("")
+    df.loc[both_present, "cdr3_concordant"] = (
+        anarci_cdr3.loc[both_present] == manual_cdr3.loc[both_present]
+    )
     return df
 
 def validate_sample_sheet(sample_sheet_path: Path) -> pd.DataFrame:
@@ -330,25 +347,149 @@ def split_at_delimiters(seq: str, delimiters: list[str], split_downstream: bool 
             return idx + len(delim) if split_downstream else idx
     return -1
 
+def _translate_delimiters(delimiters: list[str]) -> tuple[str, ...]:
+    translated = []
+    for delimiter in delimiters:
+        delimiter = str(delimiter).strip().upper()
+        if delimiter and len(delimiter) % 3 == 0:
+            peptide = str(Seq(delimiter).translate())
+            if "*" not in peptide and peptide not in translated:
+                translated.append(peptide)
+    return tuple(translated)
+
+
+def _oriented_nt(row: pd.Series) -> str:
+    nt = _clean_sequence_part(row.get("nt", "")).upper()
+    return nt if row.get("aa_strand", "forward") == "forward" else str(Seq(nt).reverse_complement())
+
+
+def _nt_for_aa_interval(row: pd.Series, aa_start: int, aa_end: int) -> tuple[str, int, int]:
+    frame = int(row.get("aa_frame", 0) or 0)
+    start = frame + 3 * aa_start
+    end = frame + 3 * aa_end
+    nucleotide = _oriented_nt(row)[start:end]
+    expected = _clean_sequence_part(row.get("aa", ""))[aa_start:aa_end]
+    if not nucleotide or str(Seq(nucleotide).translate()) != expected:
+        return "", -1, -1
+    return nucleotide, start, end
+
+
+def _extract_anarci_cdr3(row: pd.Series) -> tuple[str, int, int]:
+    cdr3 = _clean_sequence_part(row.get("CDR3", ""))
+    aa = _clean_sequence_part(row.get("aa", ""))
+    if not cdr3 or not aa:
+        return "", -1, -1
+
+    fr3 = _clean_sequence_part(row.get("FR3", ""))
+    fr4 = _clean_sequence_part(row.get("FR4", ""))
+    context = f"{fr3}{cdr3}{fr4}"
+    context_start = aa.find(context) if fr3 and fr4 else -1
+    aa_start = context_start + len(fr3) if context_start >= 0 else aa.find(cdr3)
+    if aa_start < 0:
+        return "", -1, -1
+    return _nt_for_aa_interval(row, aa_start, aa_start + len(cdr3))
+
+
+def _extract_motif_cdr3(
+    row: pd.Series,
+    upstream_peptides: tuple[str, ...],
+    downstream_peptides: tuple[str, ...],
+) -> tuple[str, str, int, int]:
+    aa = _clean_sequence_part(row.get("aa", ""))
+    candidates: list[tuple[int, int, int]] = []
+    for upstream in upstream_peptides:
+        upstream_start = aa.find(upstream)
+        while upstream_start >= 0:
+            cdr3_start = upstream_start + len(upstream)
+            for downstream in downstream_peptides:
+                cdr3_end = aa.find(downstream, cdr3_start)
+                if cdr3_end >= cdr3_start:
+                    candidates.append((cdr3_end - cdr3_start, cdr3_start, cdr3_end))
+            upstream_start = aa.find(upstream, upstream_start + 1)
+    if not candidates:
+        return "", "", -1, -1
+
+    _, aa_start, aa_end = min(candidates)
+    peptide = aa[aa_start:aa_end]
+    nucleotide, nt_start, nt_end = _nt_for_aa_interval(row, aa_start, aa_end)
+    if not nucleotide:
+        return "", "", -1, -1
+    return peptide, nucleotide, nt_start, nt_end
+
+
 def find_hcdr3(df: pd.DataFrame, upseq: list[str], downseq: list[str], read_count: dict) -> tuple[pd.DataFrame, dict]:
-    df["cdr3_beg"] = df["nt"].apply(lambda x: split_at_delimiters(x, upseq, True))
-    df["cdr3_end"] = df["nt"].apply(lambda x: split_at_delimiters(x, downseq, False))
+    """Resolve CDR3 from ANARCI first, with amino-acid motif extraction as fallback."""
+    df = df.copy()
+    upstream_peptides = _translate_delimiters(upseq)
+    downstream_peptides = _translate_delimiters(downseq)
 
-    n_reads_before = df["count"].sum()
-    n_seqs_before = len(df)
+    motif_results = df.apply(
+        lambda row: _extract_motif_cdr3(row, upstream_peptides, downstream_peptides),
+        axis=1,
+        result_type="expand",
+    )
+    motif_results.columns = [
+        "cdr3_aa_manualsearch",
+        "cdr3_nt_manualsearch",
+        "cdr3_beg_manualsearch",
+        "cdr3_end_manualsearch",
+    ]
+    for column in motif_results.columns:
+        df[column] = motif_results[column]
 
-    #  sequence without CDR3!
-    
-    df = df[(df["cdr3_beg"] != -1) & (df["cdr3_end"] != -1)].copy()
-    read_count["reads_no_cdr3_edges"] = n_reads_before - df["count"].sum()
-    read_count["seqs_no_cdr3_edges"] = n_seqs_before - len(df)
+    anarci_results = df.apply(_extract_anarci_cdr3, axis=1, result_type="expand")
+    anarci_results.columns = ["cdr3_nt_anarci", "cdr3_beg_anarci", "cdr3_end_anarci"]
+    for column in anarci_results.columns:
+        df[column] = anarci_results[column]
 
-    df["cdr3_nt"] = df.apply(lambda r: r["nt"][r["cdr3_beg"]:r["cdr3_end"]], axis=1)
+    df = _preserve_cdr3_sources(df)
+    anarci_mask = df["CDR3_ANARCI"].ne("")
+    motif_mask = df["cdr3_aa_manualsearch"].ne("")
+    accepted_mask = df["cdr3_aa"].ne("")
+
+    anarci_nt_valid = df["cdr3_nt_anarci"].fillna("").astype(str).ne("")
+    manual_matches_primary = (
+        df["cdr3_aa_manualsearch"].fillna("").astype(str) == df["cdr3_aa"]
+    )
+    use_manual_nt = (~anarci_nt_valid) & manual_matches_primary & motif_mask
+    df["cdr3_nt"] = df["cdr3_nt_anarci"].fillna("").astype(str)
+    df.loc[use_manual_nt, "cdr3_nt"] = df.loc[use_manual_nt, "cdr3_nt_manualsearch"]
+    df["cdr3_nt_source"] = ""
+    df.loc[use_manual_nt, "cdr3_nt_source"] = "motif"
+    df.loc[anarci_nt_valid, "cdr3_nt_source"] = "anarci_coordinates"
+
+    df["cdr3_beg"] = df["cdr3_beg_anarci"]
+    df["cdr3_end"] = df["cdr3_end_anarci"]
+    df.loc[use_manual_nt, "cdr3_beg"] = df.loc[use_manual_nt, "cdr3_beg_manualsearch"]
+    df.loc[use_manual_nt, "cdr3_end"] = df.loc[use_manual_nt, "cdr3_end_manualsearch"]
     df["cdr3_mod3"] = df["cdr3_nt"].str.len() % 3
-    df["cdr3_aa"] = df["cdr3_nt"].apply(lambda x: str(Seq(x).translate()))
-    df["cdr3_aa_len"] = df["cdr3_aa"].str.len()
-    df["cdr3_functional"] = (~df["cdr3_aa"].str.contains("\\*")) & (df["cdr3_mod3"] == 0)
+    df["cdr3_functional"] = (~df["cdr3_aa"].str.contains("\\*", na=False)) & (
+        df["cdr3_nt"].eq("") | df["cdr3_mod3"].eq(0)
+    )
 
+    total_reads = int(df["count"].sum())
+    total_sequences = len(df)
+    motif_reads = int(df.loc[motif_mask, "count"].sum())
+    anarci_reads = int(df.loc[anarci_mask, "count"].sum())
+    fallback_mask = (~anarci_mask) & motif_mask
+    accepted_reads = int(df.loc[accepted_mask, "count"].sum())
+    concordant_mask = df["cdr3_concordant"].map(
+        lambda value: bool(value) if not pd.isna(value) else False
+    )
+    discordant_mask = anarci_mask & motif_mask & (~concordant_mask)
+
+    read_count["reads_no_cdr3_edges"] = total_reads - motif_reads
+    read_count["seqs_no_cdr3_edges"] = total_sequences - int(motif_mask.sum())
+    read_count["reads_no_cdr3_annotation"] = total_reads - accepted_reads
+    read_count["seqs_no_cdr3_annotation"] = total_sequences - int(accepted_mask.sum())
+    read_count["reads_cdr3_from_anarci"] = anarci_reads
+    read_count["seqs_cdr3_from_anarci"] = int(anarci_mask.sum())
+    read_count["reads_cdr3_from_motif_fallback"] = int(df.loc[fallback_mask, "count"].sum())
+    read_count["seqs_cdr3_from_motif_fallback"] = int(fallback_mask.sum())
+    read_count["reads_cdr3_discordant"] = int(df.loc[discordant_mask, "count"].sum())
+    read_count["seqs_cdr3_discordant"] = int(discordant_mask.sum())
+
+    df = df.loc[accepted_mask].copy()
     df.sort_values("count", ascending=False, inplace=True)
     return df, read_count
 
@@ -445,13 +586,27 @@ def get_full_anarci_anno(df: pd.DataFrame) -> pd.DataFrame:
         df[col] = df[col].fillna("").astype(str)
     return df
 
+def _translate_best_orf(seq: str) -> tuple[str, str, int]:
+    candidates: list[tuple[str, str, int]] = []
+    forward = str(seq)
+    reverse = str(Seq(forward).reverse_complement())
+    for strand, oriented in (("forward", forward), ("reverse", reverse)):
+        for frame in range(3):
+            coding_sequence = oriented[frame:]
+            coding_sequence = coding_sequence[: len(coding_sequence) - (len(coding_sequence) % 3)]
+            candidates.append((str(Seq(coding_sequence).translate(to_stop=True)), strand, frame))
+    return max(candidates, key=lambda item: len(item[0])) if candidates else ("", "forward", 0)
+
+
 def NT2AA(seq: str) -> str:
-    candidates = [Seq(seq[i:]).translate(to_stop=True) for i in range(3)]
-    candidates += [Seq(str(Seq(seq).reverse_complement())[i:]).translate(to_stop=True) for i in range(3)]
-    return max(candidates, key=len) if candidates else ""
+    return _translate_best_orf(seq)[0]
 
 def consolidate(df: pd.DataFrame) -> pd.DataFrame:
-    drop_cols = ["nt", "cdr3_beg", "cdr3_end", "cdr3_nt", "cdr3_mod3", "anarci"]
+    drop_cols = [
+        "nt", "cdr3_beg", "cdr3_end", "cdr3_beg_anarci", "cdr3_end_anarci",
+        "cdr3_beg_manualsearch", "cdr3_end_manualsearch", "cdr3_mod3", "anarci",
+        "aa_strand", "aa_frame",
+    ]
     df = df.drop(columns=[c for c in drop_cols if c in df.columns])
     #df["cdr3_aa"]=df["CDR3"]
     #df["cdr3_aa_len"] = df["CDR3"].str.len()
@@ -459,7 +614,12 @@ def consolidate(df: pd.DataFrame) -> pd.DataFrame:
     group_cols = ["cdr3_aa", "anarci_anno", "vh_scaffold", "vl_scaffold", "CDR1", "CDR2", "CDR3"]
     group_cols = [col for col in group_cols if col in df.columns]
     agg_cols = {"count": "sum", "cdr3_aa_len": "first"}
-    for col in ["FR1", "FR2", "FR3", "FR4", "HSEQ", "CHAIN", "aa"]:
+    for col in [
+        "FR1", "FR2", "FR3", "FR4", "HSEQ", "CHAIN", "aa",
+        "CDR3_ANARCI", "cdr3_aa_manualsearch", "cdr3_nt", "cdr3_nt_anarci",
+        "cdr3_nt_manualsearch", "cdr3_source", "cdr3_nt_source",
+        "cdr3_concordant", "cdr3_functional",
+    ]:
         if col in df.columns and col not in group_cols:
             agg_cols[col] = "first"
     df = df.groupby(group_cols).agg(agg_cols).reset_index()
@@ -475,7 +635,7 @@ def consolidate(df: pd.DataFrame) -> pd.DataFrame:
     #        # Keep only the grouping columns + CHAIN + total_count
     #        .loc[:, group_cols + ["CHAIN", "count", "cdr3_aa_len"]]
     #        .reset_index(drop=True)
-    #        )   
+    #        )
 
     df.sort_values("count", ascending=False, inplace=True)
     df["rank"] = range(1, len(df) + 1)
@@ -559,6 +719,10 @@ def run_processing(cfg_in, sample_sheet: Path, fastq_folder: Path, output_folder
         'name', 'library', 'library_type', 'antigen', 'block', 'round', 'arm', 'condition',
         'total', 'merged', 'low_quality', 'too_many_N', 'too_short', 'too_long',
         'reads_no_cdr3_edges', 'seqs_no_cdr3_edges',
+        'reads_no_cdr3_annotation', 'seqs_no_cdr3_annotation',
+        'reads_cdr3_from_anarci', 'seqs_cdr3_from_anarci',
+        'reads_cdr3_from_motif_fallback', 'seqs_cdr3_from_motif_fallback',
+        'reads_cdr3_discordant', 'seqs_cdr3_discordant',
         'reads_with_short_cdr3', 'seqs_with_short_cdr3',
         'reads_with_low_frequency', 'seqs_with_low_frequency',
         'reads_ambiguous', 'seqs_ambiguous',
@@ -588,11 +752,14 @@ def run_processing(cfg_in, sample_sheet: Path, fastq_folder: Path, output_folder
 
         df = load_fastq_to_df(merged_fastq)
 
-        df["aa"] = df["nt"].apply(NT2AA)
+        translations = df["nt"].apply(_translate_best_orf)
+        df["aa"] = translations.str[0]
+        df["aa_strand"] = translations.str[1]
+        df["aa_frame"] = translations.str[2]
         df["aa_len"] = df["aa"].str.len()
-        
+
         df = get_full_anarci_anno(df)
-        
+
         df['anarci_anno'] = (df['CHAIN'] != "Not Fully Annotated")
         unique_dna = len(df)
 
@@ -604,8 +771,7 @@ def run_processing(cfg_in, sample_sheet: Path, fastq_folder: Path, output_folder
             vh_barcode_region=scaffold_settings["vh_region"],
             vl_barcode_region=scaffold_settings["vl_region"],
         )
-        
-        df = _preserve_cdr3_sources(df)
+
         df["HSEQ"] = df.apply(_build_hseq_from_regions, axis=1)
 
 
@@ -662,8 +828,8 @@ def run_processing(cfg_in, sample_sheet: Path, fastq_folder: Path, output_folder
             "unique_dna": unique_dna,
             "unique_dna_pct": round(100 * unique_dna / read_count["total"], 2) if read_count["total"] > 0 else 0,
             "merged_pct": round(100 * read_count["merged"] / read_count["total"], 2) if read_count["total"] > 0 else 0,
-            "anarci_anno":round(100*df_before_consolidate.loc[df_before_consolidate.anarci_anno]['count'].sum()/df_before_consolidate['count'].sum(),2),
-            "anarci_anno_unique_dna":round(100*len(df_before_consolidate.loc[df_before_consolidate.anarci_anno])/len(df_before_consolidate),2),
+            "anarci_anno":round(100*df_before_consolidate.loc[df_before_consolidate.anarci_anno]['count'].sum()/df_before_consolidate['count'].sum(),2) if df_before_consolidate['count'].sum() else 0.0,
+            "anarci_anno_unique_dna":round(100*len(df_before_consolidate.loc[df_before_consolidate.anarci_anno])/len(df_before_consolidate),2) if len(df_before_consolidate) else 0.0,
             "unique_fr1":len(df_before_consolidate['FR1'].value_counts()),
             "unique_fr2":len(df_before_consolidate['FR2'].value_counts()),
             "unique_fr3":len(df_before_consolidate['FR3'].value_counts()),
@@ -696,12 +862,19 @@ def run_processing(cfg_in, sample_sheet: Path, fastq_folder: Path, output_folder
         out_raw = f"{output_dir}/raw/{name}_{row['block']}_raw.csv.gz"
 
         out_file.parent.mkdir(parents=True, exist_ok=True)
-        print(out_file)        
+        print(out_file)
         df.to_csv(out_file, index=False, compression="gzip")
-        
+
         total_raw=df_before_consolidate["count"].sum()
         if total_raw > 0:
-            df_before_consolidate = df_before_consolidate.drop(columns=['anarci','cdr3_beg','cdr3_end','cdr3_nt','cdr3_mod3','cdr3_aa','cdr3_aa_len','antigen','block','round','arm','condition','aa'])
+            df_before_consolidate = df_before_consolidate.drop(
+                columns=[
+                    'anarci', 'cdr3_beg', 'cdr3_end', 'cdr3_beg_anarci', 'cdr3_end_anarci',
+                    'cdr3_beg_manualsearch', 'cdr3_end_manualsearch', 'cdr3_mod3',
+                    'antigen', 'block', 'round', 'arm', 'condition', 'aa', 'aa_strand', 'aa_frame'
+                ],
+                errors='ignore',
+            )
             df_before_consolidate["freq"] =  df_before_consolidate["count"] / total_raw
             df_before_consolidate.to_csv(out_raw, index=False, compression="gzip")
 
