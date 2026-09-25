@@ -1,5 +1,0 @@
-name: "LLNL_Project"
-registry_project: "LLNL_Project"
-created: "2026-07-29"
-default_library: "mixed"
-description: "LLNL antibody discovery NGS subproject."
